@@ -45,3 +45,18 @@ __kernel void gaussian_filter(__read_only image2d_t srcImg,
         write_imagef(dstImg, outImageCoord, outColor);
     }
 }
+
+__kernel void rotation(__read_only image2d_t srcImg,__write_only image2d_t dstImg, sampler_t sampler) { 
+		int2 outImageCoord = (int2) (get_global_id(0), get_global_id(1));
+		int2 originOutImageCoord = (int2) (get_global_id(0), get_global_id(1));
+		float angle = (3.14 / 180) * 10;
+		int x = (outImageCoord.x-get_image_width(srcImg)/2) * cos(angle) - (outImageCoord.y-get_image_height(srcImg)/2) * sin(angle) +get_image_width(srcImg)/2;
+		int y = (outImageCoord.x-get_image_width(srcImg)/2) * sin(angle) + (outImageCoord.y-get_image_height(srcImg)/2) * cos(angle) +get_image_height(srcImg)/2;
+		//if (x > 0 && x < get_image_width(srcImg) && y > 0 && y < get_image_height(srcImg)) {
+			outImageCoord.x = x;
+			outImageCoord.y = y;
+		//}
+		
+		float4 outColor = (float4)read_imagef(srcImg, sampler, (int2)originOutImageCoord);
+		write_imagef(dstImg, outImageCoord, outColor);
+}

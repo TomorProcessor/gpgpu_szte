@@ -40,7 +40,7 @@
     <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Intel_OpenCL_Build_Rules Include="rotate.cl" />
+    <Intel_OpenCL_Build_Rules Include="kernels.cl" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{E99F5DFC-113A-4BC3-8253-90A6AC0C9A9D}</ProjectGuid>

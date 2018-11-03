@@ -1,3 +1,6 @@
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
+#define _AFXDLL
+
 #include <afxwin.h>
 #include <afxdlgs.h>
 #include <Winuser.h>
@@ -5,13 +8,15 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <atlimage.h>
 #include "FreeImage.h"
 
 
-#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 const int N = 512;
 const int MAX_PLATFORMS = 5;
 const int MAX_DEVICES = 5;
+CImage originalImage;
+CImage modifiedImage;
 
 int openClHost(CString imgFileUrl);
 
@@ -52,6 +57,46 @@ public:
 
 };
 
+MainWindow *wnd;
+
+class ImageWindow : public CFrameWnd {
+	DECLARE_MESSAGE_MAP()
+	BOOL isOriginal;
+public:
+	ImageWindow(CRect rect, BOOL isOriginal) {
+		this->isOriginal = isOriginal;
+		LPCTSTR title;
+		if (isOriginal) {
+			title = L"Original Image";
+		}
+		else {
+			title = L"Modified Image";
+		}
+		Create(NULL, title ,
+			WS_POPUPWINDOW | WS_CAPTION,
+			rect, NULL, NULL,
+			WS_EX_TOOLWINDOW);
+	}
+	void OnPaint() {
+		CPaintDC dc(this); // device context for painting
+		CRect rc;
+		GetClientRect(&rc);
+		if (this->isOriginal) {
+			originalImage.Draw(dc.m_hDC, rc.left, rc.top, rc.Width(), rc.Height(), 0, 0,
+				originalImage.GetWidth(), originalImage.GetHeight());
+		}
+		else {
+			modifiedImage.Draw(dc.m_hDC, rc.left, rc.top, rc.Width(), rc.Height(), 0, 0,
+				modifiedImage.GetWidth(), modifiedImage.GetHeight());
+		}
+		
+	}
+};
+
+BEGIN_MESSAGE_MAP(ImageWindow, CFrameWnd)
+	ON_WM_PAINT()
+END_MESSAGE_MAP()
+
 class OpenButton : public CButton {
 	DECLARE_MESSAGE_MAP()
 public:
@@ -65,6 +110,14 @@ public:
 			CString sFilePath = dlg.GetPathName();
 			//MessageBox(sFilePath);
 			::openClHost(sFilePath);
+			int screenWidth = GetSystemMetrics(SM_CXFULLSCREEN);
+			int screenHeight = GetSystemMetrics(SM_CYFULLSCREEN);
+
+			ImageWindow *window1 = new ImageWindow(CRect(0, 0, originalImage.GetWidth(), originalImage.GetHeight()),TRUE);
+			window1->ShowWindow(SW_NORMAL);
+
+			ImageWindow *window2 = new ImageWindow(CRect(0, 0, modifiedImage.GetWidth(), modifiedImage.GetHeight()), FALSE);
+			window2->ShowWindow(SW_NORMAL);
 		}
 	}
 };
@@ -92,7 +145,6 @@ class Main :public CWinApp
 {
 	MainDialog *dialog;
 public:
-	MainWindow *wnd;
 	BOOL InitInstance()
 	{
 		wnd = new MainWindow();
@@ -106,6 +158,7 @@ public:
 };
 
 Main main;
+
 
 ///
 //  Constants
@@ -358,12 +411,23 @@ size_t RoundUp(int groupSize, int globalSize)
 	}
 }
 
+HBITMAP ConvertFibitmapToHbitmap(FIBITMAP* dib)
+{
+	if (dib == nullptr) return nullptr;
+	HDC hDC = GetDC(NULL);
+	HBITMAP bitmap = CreateDIBitmap(hDC, FreeImage_GetInfoHeader(dib),
+		CBM_INIT, FreeImage_GetBits(dib), FreeImage_GetInfo(dib), DIB_RGB_COLORS);
+	ReleaseDC(NULL, hDC);
+	return bitmap;
+}
+
 cl_mem LoadImage(cl_context context, char *fileName, int &width, int &height)
 {
 	FREE_IMAGE_FORMAT format = FreeImage_GetFileType(fileName, 0);
 	FIBITMAP* image = FreeImage_Load(format, fileName);
 
-
+	//GetObject(ConvertFibitmapToHbitmap(image), sizeof(BITMAP), &originalImage);
+	originalImage.Attach(ConvertFibitmapToHbitmap(image));
 	// Convert to 32-bit image
 	FIBITMAP* temp = image;
 	image = FreeImage_ConvertTo32Bits(image);
@@ -436,7 +500,7 @@ int openClHost(CString imgFileUrl) {
 
 
 	// Create OpenCL program from HelloWorld.cl kernel source
-	program = CreateProgram(context, device, "../device.cl");
+	program = CreateProgram(context, device, "kernels.cl");
 	if (program == NULL)
 	{
 		Cleanup(context, commandQueue, program, kernel, imgObjects, sampler, kernelBuffer);
@@ -444,7 +508,7 @@ int openClHost(CString imgFileUrl) {
 	}
 
 	// Create OpenCL kernel
-	kernel = clCreateKernel(program, "gaussian_filter", NULL);
+	kernel = clCreateKernel(program, "rotation", NULL);
 	if (kernel == NULL)
 	{
 		std::cerr << "Failed to create kernel" << std::endl;
@@ -538,11 +602,11 @@ int openClHost(CString imgFileUrl) {
 	// Set the kernel arguments (result, a, b)
 	errNum = clSetKernelArg(kernel, 0, sizeof(cl_mem), &imgObjects[0]);
 	errNum |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &imgObjects[1]);
-	errNum |= clSetKernelArg(kernel, 2, sizeof(cl_sampler), &sampler);
+	errNum |= clSetKernelArg(kernel, 2, sizeof(cl_sampler), &sampler);/*
 	errNum |= clSetKernelArg(kernel, 3, sizeof(cl_int), &width);
 	errNum |= clSetKernelArg(kernel, 4, sizeof(cl_int), &height);
 	errNum |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &kernelBuffer);
-	errNum |= clSetKernelArg(kernel, 6, sizeof(cl_int), &kernelWidth);
+	errNum |= clSetKernelArg(kernel, 6, sizeof(cl_int), &kernelWidth);*/
 
 	if (errNum != CL_SUCCESS)
 	{
@@ -604,7 +668,12 @@ int openClHost(CString imgFileUrl) {
 
 
 	//SaveImage("Output.bmp", result, width, height);
-
+	//FREE_IMAGE_FORMAT format = FreeImage_GetFIFFromFilename("output.bmp");
+	FIBITMAP *image = FreeImage_ConvertFromRawBits((BYTE*)result, width,
+		height, width * 4, 32,
+		0xFF000000, 0x00FF0000, 0x0000FF00);
+	modifiedImage.Attach(ConvertFibitmapToHbitmap(image));
+	//FreeImage_Save(format, image, "output.bmp");
 
 	std::cout << "Executed program succesfully." << std::endl;
 
