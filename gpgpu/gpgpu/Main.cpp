@@ -101,9 +101,10 @@ class OpenButton : public CButton {
 	DECLARE_MESSAGE_MAP()
 public:
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point) {
-		//MessageBox(L"Left Mouse Button Up");
+		if (originalImage) originalImage.Detach();
+		if (modifiedImage) modifiedImage.Detach();
 
-		const TCHAR szFilter[] = _T("Image Files (*.png)|*.png|");
+		const TCHAR szFilter[] = _T("png Image|*.png|jpg Image|*.jpg|");
 		CFileDialog dlg(TRUE, _T("csv"), NULL, OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT, szFilter, this);
 		if (dlg.DoModal() == IDOK)
 		{
@@ -508,7 +509,7 @@ int openClHost(CString imgFileUrl) {
 	}
 
 	// Create OpenCL kernel
-	kernel = clCreateKernel(program, "rotation", NULL);
+	kernel = clCreateKernel(program, "rotation_reverse", NULL);
 	if (kernel == NULL)
 	{
 		std::cerr << "Failed to create kernel" << std::endl;
@@ -558,8 +559,8 @@ int openClHost(CString imgFileUrl) {
 	imgObjects[1] = clCreateImage2D(context,
 		CL_MEM_WRITE_ONLY,
 		&clImageFormat,
-		N,
-		N,
+		width,
+		height,
 		0,
 		NULL,
 		&errNum);
@@ -570,33 +571,6 @@ int openClHost(CString imgFileUrl) {
 	{
 		std::cerr << "Error creating memory objects." << std::endl;
 		return false;
-	}
-
-	const int kernelWidth = 5;
-	const int sum = 25;
-
-	cl_float  kernelMask[kernelWidth * kernelWidth] =
-	{
-		1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum,
-		1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum,
-		1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum,
-		1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum,
-		1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum, 1.0f / sum
-	};
-
-
-	kernelBuffer = clCreateBuffer(
-		context,
-		CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-		sizeof(cl_uint) * kernelWidth * kernelWidth,
-		kernelMask,
-		&errNum);
-
-	if (errNum != CL_SUCCESS)
-	{
-		std::cerr << "Error creating kernelBuffer." << std::endl;
-		Cleanup(context, commandQueue, program, kernel, imgObjects, sampler, kernelBuffer);
-		return 1;
 	}
 
 	// Set the kernel arguments (result, a, b)
@@ -616,8 +590,8 @@ int openClHost(CString imgFileUrl) {
 
 
 	size_t localWorkSize[2] = { 16, 16 };
-	size_t globalWorkSize[2] = { RoundUp(localWorkSize[0], N),
-		RoundUp(localWorkSize[1], N) };
+	size_t globalWorkSize[2] = { RoundUp(localWorkSize[0], width),
+		RoundUp(localWorkSize[1], height) };
 
 	LARGE_INTEGER perfFrequency;
 	LARGE_INTEGER performanceCountNDRangeStart;
